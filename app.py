@@ -3,35 +3,27 @@ import pandas as pd
 import urllib.parse
 
 # 页面配置
-st.set_page_config(page_title="私人配送助手", layout="wide")
+st.set_page_config(page_title="派送大师 2026版", layout="wide")
 
-# 强制手机端样式优化
+# CSS 样式：优化手机端显示，大数字，绿按钮
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 1rem;}
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
     .stButton button {
-        width: 100%; 
-        border-radius: 8px; 
-        height: 3.5em; 
-        background-color: #28a745; 
-        color: white; 
-        font-weight: bold;
-        border: none;
+        width: 100%; border-radius: 12px; height: 3.5em; 
+        background-color: #28a745; color: white; font-weight: bold; border: none;
     }
-    .address-card {
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #28a745;
-        margin-bottom: 10px;
+    .address-box {
+        background-color: #ffffff; padding: 12px; border-radius: 10px;
+        border: 1px solid #ddd; margin-bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🚚 配送清单 (数字版)")
+st.title("🚚 终极派送清单")
 
 # 1. 地址输入
-raw_input = st.text_area("在此粘贴地址列表：", height=150)
+raw_input = st.text_area("在此粘贴全部地址：", height=150, placeholder="每行一个地址...")
 
 if raw_input:
     # 解析并去重
@@ -40,34 +32,36 @@ if raw_input:
     
     st.markdown("---")
     
-    # 2. 全局分布按钮（不带连线，只带标注）
-    # 使用 Google Maps Search 模式来展示所有点，避免 A-B-C 连线
-    search_query = urllib.parse.quote("Warman, SK")
-    # 如果想在地图上看到多个点，最简单免费办法是跳转到已搜好的预览
-    st.link_button("📍 在地图上查看所有位置分布", f"https://www.google.com/maps/search/{search_query}")
+    # 2. 全分布地图按钮
+    # 策略：我们将地址转化为搜索词，利用 Google Maps 的“搜索附近”功能来标记
+    # 对于多点展示，最稳定且免费的方法是引导用户进入 Google Maps 的特定搜索视图
+    all_addr_query = "+OR+".join([urllib.parse.quote(f'"{a}"') for a in address_list[:10]]) # 限制前10个以保证链接不崩溃
+    map_url = f"https://www.google.com/maps/search/{all_addr_query}"
+    
+    st.link_button("📍 在地图中预览所有站点分布 (前10站示例)", map_url)
+    st.caption("提示：由于谷歌限制，全图预览通常只支持同时显示部分站点。")
 
-    st.subheader(f"🔢 今日任务：{len(address_list)} 站")
+    st.subheader(f"🔢 派送顺序 (共 {len(address_list)} 站)")
 
-    # 3. 核心清单展示
+    # 3. 核心清单：大数字编号 + 修复版导航按钮
     for i, addr in enumerate(address_list):
-        # 创建一个容器模拟卡片样式
         with st.container():
-            col_text, col_nav = st.columns([3, 2])
+            col_idx, col_content, col_btn = st.columns([1, 4, 3])
             
-            with col_text:
-                # 巨大的数字编号
-                st.markdown(f"### 站点 {i+1}")
+            with col_idx:
+                # 醒目的数字编号
+                st.markdown(f"## {i+1}")
+            
+            with col_content:
                 st.write(addr)
             
-            with col_nav:
-                # 编码地址
+            with col_btn:
                 encoded_addr = urllib.parse.quote(addr)
-                # 使用标准的 Google Maps 导航协议
-                # 这种格式会直接打开手机 App 并进入该地点的预览或导航页
-                final_nav_url = f"https://www.google.com/maps/dir/?api=1&destination={encoded_addr}"
-                st.link_button("🚀 开始导航", final_nav_url)
+                # 使用谷歌官方推荐的 Universal Link，自动匹配 App 或浏览器
+                nav_url = f"https://www.google.com/maps/dir/?api=1&destination={encoded_addr}"
+                st.link_button("🚀 导航", nav_url)
             
             st.markdown("---")
 
 else:
-    st.info("请先粘贴地址列表。")
+    st.info("💡 粘贴地址后，这里会显示 1, 2, 3... 纯数字编号的派送列表。")
