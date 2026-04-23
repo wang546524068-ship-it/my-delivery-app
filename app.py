@@ -2,49 +2,62 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 
-st.set_page_config(page_title="派送大师 Pro", layout="wide")
+# 页面配置：设置为宽屏，标题为“派送清单”
+st.set_page_config(page_title="我的派送清单", layout="wide")
 
-st.title("🚚 我的私人配送助手 Pro")
+# 隐藏 Streamlit 默认的顶部边距，让手机屏幕显示更多内容
+st.markdown("""
+    <style>
+    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
+    .stButton button {width: 100%; border-radius: 10px; height: 3em; background-color: #007BFF; color: white;}
+    </style>
+    """, unsafe_allow_html=True)
 
-# 地址输入框
-raw_input = st.text_area("粘贴所有地址：", height=200, placeholder="每行一个地址...")
+st.title("📦 每日派送助手")
+
+# 1. 地址输入区域
+st.subheader("1. 粘贴地址列表")
+raw_input = st.text_area("请把所有地址粘贴在下面：", height=150, placeholder="每行一个地址...")
 
 if raw_input:
-    # 1. 解析地址并去重
+    # 解析地址并去重，保持原始粘贴顺序
     lines = [line.strip() for line in raw_input.split('\n') if line.strip()]
     address_list = list(dict.fromkeys(lines))
-
-    # 2. 排序逻辑 (这里我们提供一个简单的自动优化按钮)
-    # 提示：真正的算法需要API，这里我们先提供一个“手动微调”和“一键串联”的功能
     
-    st.subheader(f"📍 今日待送: {len(address_list)} 个站点")
+    st.markdown("---")
     
-    # --- 按钮区 ---
-    col_btn1, col_btn2 = st.columns(2)
-    
-    with col_btn1:
-        # 生成总路线示意图的链接 (Google Maps 最多支持串联约10-15个点)
+    # 2. 功能按钮
+    col_a, col_b = st.columns(2)
+    with col_a:
+        # 生成总路线预览图（前15站）
         dest_str = "/".join([urllib.parse.quote(a) for a in address_list[:15]])
         all_route_url = f"https://www.google.com/maps/dir/{dest_str}"
-        st.link_button("🌐 查看全天总路线示意图", all_route_url, use_container_width=True)
+        st.link_button("🌐 查看全天预览图", all_route_url)
     
-    with col_btn2:
-        if st.button("🔄 重新按 Warman 南北顺序排序", use_container_width=True):
-            # 这是一个简单的逻辑：包含数字路名的通常在北边，这里可以根据你对地形的了解定制
-            address_list.sort() # 默认字母排序，你可以手动在这里调整
-            st.success("已完成初步排序！")
+    with col_b:
+        if st.button("🗑️ 清空列表"):
+            st.rerun()
 
-    st.markdown("---")
+    st.subheader(f"📍 待配送清单 (共 {len(address_list)} 站)")
 
-    # 3. 显示详细列表
+    # 3. 核心列表：纯数字编号 + 大导航按钮
     for i, addr in enumerate(address_list):
-        c1, c2 = st.columns([4, 1])
-        with c1:
-            st.info(f"**第 {i+1} 站:** {addr}")
-        with c2:
+        # 使用列布局：左侧数字和地址，右侧大按钮
+        cols = st.columns([4, 2])
+        
+        with cols[0]:
+            # 用加粗数字显示站点
+            st.markdown(f"### {i+1}")
+            st.write(addr)
+            
+        with cols[1]:
+            # 编码地址用于跳转导航
             query = urllib.parse.quote(addr)
-            # 使用导航模式的链接
-            st.link_button("🚀 导航", f"google.navigation:q={query}", use_container_width=True)
+            # 使用 google.navigation 协议直接唤起手机导航模式
+            nav_url = f"google.navigation:q={query}"
+            st.link_button("🚀 导航", nav_url)
+        
+        st.markdown("---") # 每一站之间划一条线，方便区分
 
 else:
-    st.info("请在上方粘贴地址。")
+    st.info("👋 你好！请在上方输入框粘贴地址，我会自动为你生成带数字编号的导航清单。")
