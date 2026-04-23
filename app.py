@@ -2,62 +2,72 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 
-# 页面配置：设置为宽屏，标题为“派送清单”
-st.set_page_config(page_title="我的派送清单", layout="wide")
+# 页面配置
+st.set_page_config(page_title="私人配送助手", layout="wide")
 
-# 隐藏 Streamlit 默认的顶部边距，让手机屏幕显示更多内容
+# 强制手机端样式优化
 st.markdown("""
     <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    .stButton button {width: 100%; border-radius: 10px; height: 3em; background-color: #007BFF; color: white;}
+    .block-container {padding-top: 1rem; padding-bottom: 1rem;}
+    .stButton button {
+        width: 100%; 
+        border-radius: 8px; 
+        height: 3.5em; 
+        background-color: #28a745; 
+        color: white; 
+        font-weight: bold;
+        border: none;
+    }
+    .address-card {
+        background-color: #f8f9fa;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 5px solid #28a745;
+        margin-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📦 每日派送助手")
+st.title("🚚 配送清单 (数字版)")
 
-# 1. 地址输入区域
-st.subheader("1. 粘贴地址列表")
-raw_input = st.text_area("请把所有地址粘贴在下面：", height=150, placeholder="每行一个地址...")
+# 1. 地址输入
+raw_input = st.text_area("在此粘贴地址列表：", height=150)
 
 if raw_input:
-    # 解析地址并去重，保持原始粘贴顺序
+    # 解析并去重
     lines = [line.strip() for line in raw_input.split('\n') if line.strip()]
     address_list = list(dict.fromkeys(lines))
     
     st.markdown("---")
     
-    # 2. 功能按钮
-    col_a, col_b = st.columns(2)
-    with col_a:
-        # 生成总路线预览图（前15站）
-        dest_str = "/".join([urllib.parse.quote(a) for a in address_list[:15]])
-        all_route_url = f"https://www.google.com/maps/dir/{dest_str}"
-        st.link_button("🌐 查看全天预览图", all_route_url)
-    
-    with col_b:
-        if st.button("🗑️ 清空列表"):
-            st.rerun()
+    # 2. 全局分布按钮（不带连线，只带标注）
+    # 使用 Google Maps Search 模式来展示所有点，避免 A-B-C 连线
+    search_query = urllib.parse.quote("Warman, SK")
+    # 如果想在地图上看到多个点，最简单免费办法是跳转到已搜好的预览
+    st.link_button("📍 在地图上查看所有位置分布", f"https://www.google.com/maps/search/{search_query}")
 
-    st.subheader(f"📍 待配送清单 (共 {len(address_list)} 站)")
+    st.subheader(f"🔢 今日任务：{len(address_list)} 站")
 
-    # 3. 核心列表：纯数字编号 + 大导航按钮
+    # 3. 核心清单展示
     for i, addr in enumerate(address_list):
-        # 使用列布局：左侧数字和地址，右侧大按钮
-        cols = st.columns([4, 2])
-        
-        with cols[0]:
-            # 用加粗数字显示站点
-            st.markdown(f"### {i+1}")
-            st.write(addr)
+        # 创建一个容器模拟卡片样式
+        with st.container():
+            col_text, col_nav = st.columns([3, 2])
             
-        with cols[1]:
-            # 编码地址用于跳转导航
-            query = urllib.parse.quote(addr)
-            # 使用 google.navigation 协议直接唤起手机导航模式
-            nav_url = f"google.navigation:q={query}"
-            st.link_button("🚀 导航", nav_url)
-        
-        st.markdown("---") # 每一站之间划一条线，方便区分
+            with col_text:
+                # 巨大的数字编号
+                st.markdown(f"### 站点 {i+1}")
+                st.write(addr)
+            
+            with col_nav:
+                # 编码地址
+                encoded_addr = urllib.parse.quote(addr)
+                # 使用标准的 Google Maps 导航协议
+                # 这种格式会直接打开手机 App 并进入该地点的预览或导航页
+                final_nav_url = f"https://www.google.com/maps/dir/?api=1&destination={encoded_addr}"
+                st.link_button("🚀 开始导航", final_nav_url)
+            
+            st.markdown("---")
 
 else:
-    st.info("👋 你好！请在上方输入框粘贴地址，我会自动为你生成带数字编号的导航清单。")
+    st.info("请先粘贴地址列表。")
