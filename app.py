@@ -7,7 +7,7 @@ st.set_page_config(page_title="私人配送助手 AI版", layout="wide")
 # ==========================================
 # 1. 配置你的 API KEY
 # ==========================================
-API_KEY = "AIzaSyCHVm0sk4fbhxUUeFVFeYHHcfUTHJnPmyk" 
+API_KEY = "AIzaSyDgv1VsFfJ0tWfyzewmvEsPIlzHa67y17w 
 
 # ==========================================
 # 2. 核心算法：地理编码与路径优化
