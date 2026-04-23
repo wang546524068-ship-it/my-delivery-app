@@ -1,2 +1,5 @@
 streamlit
-requests
+pandas
+googlemaps
+streamlit-folium
+folium
