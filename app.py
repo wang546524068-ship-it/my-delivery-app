@@ -1,67 +1,100 @@
 import streamlit as st
-import pandas as pd
+import requests
 import urllib.parse
 
-# 页面配置
-st.set_page_config(page_title="派送大师 2026版", layout="wide")
+st.set_page_config(page_title="私人配送助手 AI版", layout="wide")
 
-# CSS 样式：优化手机端显示，大数字，绿按钮
-st.markdown("""
-    <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    .stButton button {
-        width: 100%; border-radius: 12px; height: 3.5em; 
-        background-color: #28a745; color: white; font-weight: bold; border: none;
-    }
-    .address-box {
-        background-color: #ffffff; padding: 12px; border-radius: 10px;
-        border: 1px solid #ddd; margin-bottom: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# ==========================================
+# 1. 配置你的 API KEY
+# ==========================================
+API_KEY = "AIzaSyCHVm0sk4fbhxUUeFVFeYHHcfUTHJnPmyk" 
 
-st.title("🚚 终极派送清单")
+# ==========================================
+# 2. 核心算法：地理编码与路径优化
+# ==========================================
+def get_lat_lng(address):
+    """将地址转换为经纬度"""
+    url = f"https://maps.googleapis.com/maps/api/geocode/json?address={urllib.parse.quote(address)}&key={API_KEY}"
+    try:
+        res = requests.get(url).json()
+        if res['status'] == 'OK':
+            loc = res['results'][0]['geometry']['location']
+            return loc['lat'], loc['lng']
+    except:
+        return None, None
 
-# 1. 地址输入
-raw_input = st.text_area("在此粘贴全部地址：", height=150, placeholder="每行一个地址...")
+def solve_tsp(addresses):
+    """最近邻算法：从第一个点开始，每次找最近的下一个点"""
+    if not addresses: return []
+    
+    # 获取所有点的经纬度数据
+    nodes = []
+    with st.spinner('正在定位地址坐标...'):
+        for addr in addresses:
+            lat, lng = get_lat_lng(addr)
+            if lat is not None:
+                nodes.append({"addr": addr, "lat": lat, "lng": lng})
+    
+    if not nodes: return addresses
+    
+    # 路径规划逻辑
+    unvisited = nodes[:]
+    optimized_route = []
+    # 默认第一个地址为起始点
+    current_node = unvisited.pop(0)
+    optimized_route.append(current_node['addr'])
+    
+    while unvisited:
+        # 计算距离当前点最近的一个
+        next_node = min(unvisited, key=lambda x: (x['lat']-current_node['lat'])**2 + (x['lng']-current_node['lng'])**2)
+        optimized_route.append(next_node['addr'])
+        unvisited.remove(next_node)
+        current_node = next_node
+        
+    return optimized_route
+
+# ==========================================
+# 3. 网页界面设计
+# ==========================================
+st.title("🚀 智能路径规划系统")
+
+raw_input = st.text_area("在此粘贴原始地址列表：", height=150, placeholder="每行一个地址...")
 
 if raw_input:
-    # 解析并去重
     lines = [line.strip() for line in raw_input.split('\n') if line.strip()]
     address_list = list(dict.fromkeys(lines))
     
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("✨ 智能优化排序 (最短路径)", type="primary", use_container_width=True):
+            if "AIza" not in API_KEY:
+                st.error("请先在代码中填入正确的 API Key！")
+            else:
+                st.session_state.final_list = solve_tsp(address_list)
+                st.success("优化成功！已按地理位置重新排队。")
+
+    with col2:
+        if st.button("🗑️ 重置", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
+    # 获取当前显示的列表（优化后的或原始的）
+    display_list = st.session_state.get('final_list', address_list)
+
     st.markdown("---")
-    
-    # 2. 全分布地图按钮
-    # 策略：我们将地址转化为搜索词，利用 Google Maps 的“搜索附近”功能来标记
-    # 对于多点展示，最稳定且免费的方法是引导用户进入 Google Maps 的特定搜索视图
-    all_addr_query = "+OR+".join([urllib.parse.quote(f'"{a}"') for a in address_list[:10]]) # 限制前10个以保证链接不崩溃
-    map_url = f"https://www.google.com/maps/search/{all_addr_query}"
-    
-    st.link_button("📍 在地图中预览所有站点分布 (前10站示例)", map_url)
-    st.caption("提示：由于谷歌限制，全图预览通常只支持同时显示部分站点。")
+    st.subheader(f"🔢 派送清单 (共 {len(display_list)} 站)")
 
-    st.subheader(f"🔢 派送顺序 (共 {len(address_list)} 站)")
-
-    # 3. 核心清单：大数字编号 + 修复版导航按钮
-    for i, addr in enumerate(address_list):
+    for i, addr in enumerate(display_list):
+        # 手机端大卡片设计
         with st.container():
-            col_idx, col_content, col_btn = st.columns([1, 4, 3])
-            
-            with col_idx:
-                # 醒目的数字编号
-                st.markdown(f"## {i+1}")
-            
-            with col_content:
+            c1, c2 = st.columns([4, 2])
+            with c1:
+                st.markdown(f"### {i+1}")
                 st.write(addr)
-            
-            with col_btn:
+            with c2:
                 encoded_addr = urllib.parse.quote(addr)
-                # 使用谷歌官方推荐的 Universal Link，自动匹配 App 或浏览器
+                # 统一使用最优的导航跳转协议
                 nav_url = f"https://www.google.com/maps/dir/?api=1&destination={encoded_addr}"
                 st.link_button("🚀 导航", nav_url)
-            
             st.markdown("---")
-
-else:
-    st.info("💡 粘贴地址后，这里会显示 1, 2, 3... 纯数字编号的派送列表。")
