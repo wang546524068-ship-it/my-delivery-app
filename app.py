@@ -2,44 +2,49 @@ import streamlit as st
 import pandas as pd
 import urllib.parse
 
-# 页面基础配置
-st.set_page_config(page_title="派送大师", layout="wide")
+st.set_page_config(page_title="派送大师 Pro", layout="wide")
 
-st.title("🚚 我的私人配送助手")
-st.markdown("---")
-
-# 侧边栏说明
-with st.sidebar:
-    st.header("操作指南")
-    st.write("1. 粘贴地址列表")
-    st.write("2. 系统自动生成编号")
-    st.write("3. 点击‘去导航’唤起地图")
+st.title("🚚 我的私人配送助手 Pro")
 
 # 地址输入框
-raw_input = st.text_area("直接粘贴所有地址（每行一个）：", height=250, placeholder="例如：\n3 Solar Rd, Warman, SK\n420 Eldorado St, Warman, SK")
+raw_input = st.text_area("粘贴所有地址：", height=200, placeholder="每行一个地址...")
 
 if raw_input:
-    # 解析并去重
+    # 1. 解析地址并去重
     lines = [line.strip() for line in raw_input.split('\n') if line.strip()]
-    address_list = list(dict.fromkeys(lines)) # 保持顺序去重
+    address_list = list(dict.fromkeys(lines))
+
+    # 2. 排序逻辑 (这里我们提供一个简单的自动优化按钮)
+    # 提示：真正的算法需要API，这里我们先提供一个“手动微调”和“一键串联”的功能
     
     st.subheader(f"📍 今日待送: {len(address_list)} 个站点")
     
-    # 建立展示表格
-    for i, addr in enumerate(address_list):
-        # 创建两列，一列显示地址，一列放置按钮
-        col1, col2 = st.columns([3, 1])
-        
-        with col1:
-            st.info(f"**站点 {i+1}:** {addr}")
-            
-        with col2:
-            # 构建 Google 地图链接
-            query = urllib.parse.quote(addr)
-            google_url = f"https://www.google.com/maps/search/?api=1&query={query}"
-            st.link_button("🚀 导航", google_url, use_container_width=True)
+    # --- 按钮区 ---
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        # 生成总路线示意图的链接 (Google Maps 最多支持串联约10-15个点)
+        dest_str = "/".join([urllib.parse.quote(a) for a in address_list[:15]])
+        all_route_url = f"https://www.google.com/maps/dir/{dest_str}"
+        st.link_button("🌐 查看全天总路线示意图", all_route_url, use_container_width=True)
+    
+    with col_btn2:
+        if st.button("🔄 重新按 Warman 南北顺序排序", use_container_width=True):
+            # 这是一个简单的逻辑：包含数字路名的通常在北边，这里可以根据你对地形的了解定制
+            address_list.sort() # 默认字母排序，你可以手动在这里调整
+            st.success("已完成初步排序！")
 
-    if st.button("🗑️ 清空列表"):
-        st.rerun()
+    st.markdown("---")
+
+    # 3. 显示详细列表
+    for i, addr in enumerate(address_list):
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.info(f"**第 {i+1} 站:** {addr}")
+        with c2:
+            query = urllib.parse.quote(addr)
+            # 使用导航模式的链接
+            st.link_button("🚀 导航", f"google.navigation:q={query}", use_container_width=True)
+
 else:
-    st.warning("请在上方粘贴地址以开始。")
+    st.info("请在上方粘贴地址。")
