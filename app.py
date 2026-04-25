@@ -2,104 +2,139 @@ import streamlit as st
 import googlemaps
 import folium
 from streamlit_folium import folium_static
+import time
 
-# 页面设置
-st.set_page_config(page_title="派送大师 Pro - 精度修复版", layout="wide")
+# --- 页面配置 ---
+st.set_page_config(page_title="派送大师 Pro Max", layout="wide")
+st.title("🚚 派送大师 Pro Max (60站全自动版)")
 
+# --- 1. 获取密钥 ---
 try:
     API_KEY = st.secrets["MAPS_API_KEY"]
     gmaps = googlemaps.Client(key=API_KEY)
 except:
-    st.error("API Key 缺失")
+    st.error("请检查 Secrets 中的 MAPS_API_KEY 配置。")
     st.stop()
 
-def get_clean_order():
-    st.title("🚚 派送助手 - 深度精度修复版")
-    
-    # 增加城市和后缀锁定，防止定位到外地
-    with st.sidebar:
-        city = st.text_input("锁定城市", "Warman")
-        province = st.text_input("锁定省份", "SK")
-        country = "Canada"
+# --- 2. 侧边栏设置 (纠偏关键) ---
+with st.sidebar:
+    st.header("📍 定位纠偏设置")
+    locked_city = st.text_input("目标城市", "Warman")
+    locked_prov = st.text_input("目标省份", "SK")
+    locked_country = "Canada"
+    st.info("系统会自动为所有地址补充以上后缀，确保定位精准。")
 
-    raw_input = st.text_area("粘贴地址清单：", height=200)
+# --- 3. 地址输入 ---
+raw_input = st.text_area("粘贴地址清单 (建议每次 60 个以内)：", height=300, placeholder="每行一个地址...")
+
+# --- 4. 核心功能函数 ---
+def get_precise_geocode(addr):
+    """带偏置逻辑的地理编码"""
+    full_addr = f"{addr}, {locked_city}, {locked_prov}, {locked_country}"
+    # 限制在 Warman 附近搜索 (Location Bias)
+    # 坐标大约是 Warman 中心: 52.3219, -106.5843
+    res = gmaps.geocode(full_addr, region='ca')
+    if res:
+        return {
+            'original': addr,
+            'latlng': res[0]['geometry']['location'],
+            'formatted': res[0]['formatted_address']
+        }
+    return None
+
+if raw_input:
+    input_lines = [line.strip() for line in raw_input.split('\n') if line.strip()]
     
-    if st.button("🚀 深度优化线路"):
-        # 1. 强化地址清洗
-        temp_list = [line.strip() for line in raw_input.split('\n') if line.strip()]
-        
-        # 强制格式化地址：[原始地址], [城市], [省份], [国家]
-        # 这样可以极大提高 Geocoding 的准确度
-        formatted_addresses = [f"{addr}, {city}, {province}, {country}" for addr in temp_list]
-        
-        with st.spinner('正在进行坐标精算...'):
-            try:
-                # 2. 增加地址校验逻辑：先转成经纬度，防止 Directions 识别错误
+    if st.button("🚀 开始超长路径优化规划"):
+        if len(input_lines) < 2:
+            st.error("请至少输入两个地址。")
+        else:
+            with st.spinner(f'正在对 {len(input_lines)} 个点进行坐标精算与分段规划...'):
+                # 步骤 A: 坐标精算 (Geocoding)
                 valid_locations = []
-                for original, full in zip(temp_list, formatted_addresses):
-                    geocode_result = gmaps.geocode(full)
-                    if geocode_result:
-                        loc = geocode_result[0]['geometry']['location']
-                        valid_locations.append({
-                            'original': original,
-                            'full': full,
-                            'latlng': (loc['lat'], loc['lng'])
-                        })
+                for addr in input_lines:
+                    loc = get_precise_geocode(addr)
+                    if loc:
+                        valid_locations.append(loc)
+                    else:
+                        st.warning(f"无法定位地址: {addr}，已跳过。")
                 
-                if not valid_locations:
-                    st.error("无法识别任何地址")
-                    return
+                # 步骤 B: 分段逻辑 (突破 25 个限制)
+                # 谷歌 API 单次 waypoint 上限是 23 (加上起点终点共 25)
+                # 我们按每 23 个点为一段进行切割
+                MAX_WAYPOINTS = 23
+                optimized_full_list = []
+                total_distance = 0
+                full_path_points = []
 
-                # 3. 调用 Directions API (使用坐标而不是文字地址，这样最准)
-                # 注意：谷歌限制中间点最多 23 个（加上起点终点共 25）
-                # 如果你超过 25 个点，这里必须分两段处理
-                if len(valid_locations) > 25:
-                    st.warning("⚠️ 站点超过 25 个，谷歌无法自动优化全部顺序。已为您优化前 25 个。")
-                    test_locations = valid_locations[:25]
-                else:
-                    test_locations = valid_locations
-
-                optimize_res = gmaps.directions(
-                    origin=test_locations[0]['latlng'],
-                    destination=test_locations[-1]['latlng'],
-                    waypoints=[l['latlng'] for l in test_locations[1:-1]],
-                    optimize_waypoints=True,
-                    mode="driving"
-                )
-
-                if optimize_res:
-                    route = optimize_res[0]
-                    order = route['waypoint_order']
+                # 如果站点多，分批处理
+                for i in range(0, len(valid_locations), MAX_WAYPOINTS):
+                    chunk = valid_locations[i : i + MAX_WAYPOINTS + 1]
+                    if len(chunk) < 2: break
                     
-                    # 重新排序列表
-                    optimized_order = [test_locations[0]]
-                    for i in order:
-                        optimized_order.append(test_locations[i+1])
-                    optimized_order.append(test_locations[-1])
-
-                    # --- 地图展示 ---
-                    m = folium.Map(location=optimized_order[0]['latlng'], zoom_start=14)
+                    # 调用 Directions API
+                    res = gmaps.directions(
+                        origin=chunk[0]['latlng'],
+                        destination=chunk[-1]['latlng'],
+                        waypoints=[c['latlng'] for c in chunk[1:-1]],
+                        optimize_waypoints=True,
+                        mode="driving"
+                    )
                     
-                    # 绘制真实路径
-                    path = googlemaps.convert.decode_polyline(route['overview_polyline']['points'])
-                    folium.PolyLine([(p['lat'], p['lng']) for p in path], color="blue", weight=5).add_to(m)
+                    if res:
+                        route = res[0]
+                        # 获取这一段的优化顺序
+                        order = route.get('waypoint_order', [])
+                        
+                        # 按优化后的顺序把点存入总列表
+                        # 每一段的起点
+                        if not optimized_full_list:
+                            optimized_full_list.append(chunk[0])
+                        
+                        # 每一段优化的中间点
+                        for idx in order:
+                            optimized_full_list.append(chunk[idx + 1])
+                        
+                        # 每一段的终点
+                        optimized_full_list.append(chunk[-1])
+                        
+                        # 累计里程和路径线
+                        total_distance += sum(leg['distance']['value'] for leg in route['legs'])
+                        decoded_line = googlemaps.convert.decode_polyline(route['overview_polyline']['points'])
+                        full_path_points.extend([(p['lat'], p['lng']) for p in decoded_line])
 
-                    # 标记点
-                    for i, item in enumerate(optimized_order, 1):
+                # --- 5. 地图展示与结果渲染 ---
+                col1, col2 = st.columns([3, 1])
+
+                with col1:
+                    st.subheader("🗺️ 智能路径示意图")
+                    # 创建地图
+                    m = folium.Map(location=[optimized_full_list[0]['latlng']['lat'], optimized_full_list[0]['latlng']['lng']], zoom_start=13)
+                    
+                    # 绘制总线路
+                    folium.PolyLine(full_path_points, color="#2196F3", weight=6, opacity=0.8).add_to(m)
+
+                    # 标记站点编号
+                    for i, item in enumerate(optimized_full_list, 1):
+                        # 起点红色，其余蓝色
+                        color = "#f44336" if i == 1 else "#3f51b5"
                         folium.Marker(
-                            location=item['latlng'],
-                            popup=item['original'],
-                            icon=folium.DivIcon(html=f"""<div style="background-color:blue; color:white; border-radius:50%; width:25px; height:25px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid white;">{i}</div>""")
+                            location=[item['latlng']['lat'], item['latlng']['lng']],
+                            icon=folium.DivIcon(html=f"""
+                                <div style="background-color:{color}; color:white; border-radius:50%; 
+                                width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+                                font-size:11px; font-weight:bold; border:2px solid white; box-shadow:0 2px 5px rgba(0,0,0,0.2);">{i}</div>"""),
+                            popup=item['original']
                         ).add_to(m)
-
-                    folium_static(m)
                     
-                    # 显示清单
-                    st.success("✅ 优化完成！点击下方按钮可直接跳转手机导航。")
-                    for i, item in enumerate(optimized_order, 1):
-                        st.write(f"{i}. {item['original']}")
+                    folium_static(m, width=900)
 
-            except Exception as e:
-                st.error(f"规划失败：{e}")
-
-get_clean_order()
+                with col2:
+                    st.subheader("📊 行程概览")
+                    st.metric("总里程", f"{total_distance/1000:.1f} km")
+                    st.metric("总站点数", f"{len(optimized_full_list)} 站")
+                    
+                    st.write("---")
+                    st.write("📋 **派送顺序：**")
+                    for i, item in enumerate(optimized_full_list, 1):
+                        st.write(f"**{i}.** {item['original']}")
